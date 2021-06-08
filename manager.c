@@ -76,6 +76,8 @@ void* thread1(){
           perror("sendto failed");
           exit(1);
        }*/
+		if(strcmp(recvBuffer,"@show_clients")==0)stat=4;
+		
 	    
 		if(stat==1){
 		  strcpy(client[cnt].name,recvBuffer);
@@ -108,33 +110,32 @@ void* thread1(){
 			char msg[1000] = "●";
 			char link[100] = " ";
 			sendto(sockfd,"전체 접속자 현황", recvLen, 0, (struct sockaddr*)&clntAddr, sizeof(clntAddr));
-			while (client[n].name!=NULL){
+			while (n<=cnt){
+				strcat(msg,link);
 				strcat(msg,client[cnt].name);
 				strcat(msg,link);
 				strcat(msg,client[cnt].ip_address);
 				strcat(msg,link);
-				if (client[cnt].status == "1")strcpy(link , "연결가능 접속중\n");
-				else if (client[cnt].status == "0")strcpy(link , "미접속중\n");
-				else if (client[cnt].status == "2")strcpy(link , "다른 상대와 연결중\n");
+				if (strcmp(client[n].status, "1")==0)	strcat(msg , " 연결 가능 접속중");
+				else if (strcmp(client[n].status, "0")==0)	strcat(msg , " 미접속중");
+				else if (strcmp(client[n].status ,"2")==0)strcat(msg , " 다른 상대와 연결중");
+				else strcat(msg , "ERROR");
 				strcat(msg,link);
-				sendto(sockfd,msg, recvLen, 0, (struct sockaddr*)&clntAddr, sizeof(clntAddr));
+				sendto(sockfd,msg, 1000, 0, (struct sockaddr*)&clntAddr, sizeof(clntAddr));
+				memset(msg, 0, 1000);
+				n++;
 			}
 			sendto(sockfd,"-------", recvLen, 0, (struct sockaddr*)&clntAddr, sizeof(clntAddr));
 		  stat=0;
 	    }
-		if(stat==5){
-		  printf("미구현\n");
-		  stat=0;
-	    }
+		
 		if(strcmp(recvBuffer,"@name")==0)stat=1;
 	    if(strcmp(recvBuffer,"@ip")==0)stat=2;
 		if(strcmp(recvBuffer,"@heartbeat")==0)stat=3;
-		if(strcmp(recvBuffer,"@show_clients")==0)stat=4;
-		if(strcmp(recvBuffer,"@connect")==0)stat=5;
-		
     }
 	close(sockfd);
 }
+
 void error_handling(char * message);
 
 //개인 IP주소 참조 함수

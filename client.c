@@ -1,4 +1,4 @@
-// 선언 헤더 파일
+ // 선언 헤더 파일
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,33 +22,21 @@
 #define BUF_SIZE 500
 #define TIMEOUT 3
 
-int _kbhit(void)
-{
-    struct termios oldt, newt;
-    int ch;
 
- 
-
-    tcgetattr( STDIN_FILENO, &oldt );
-    newt = oldt;
-
- 
-
-    newt.c_lflag &= ~( ICANON | ECHO );
-    tcsetattr( STDIN_FILENO, TCSANOW, &newt );
-
- 
-
-    ch = getchar();
-
- 
-
-    tcsetattr( STDIN_FILENO, TCSANOW, &oldt );
-
- 
-
-    return ch;
+char status[2] ="1";
+	
+int _kbhit(int time_out)
+{ 
+  fd_set rfds;
+  struct timeval tv;
+  FD_ZERO(&rfds);
+  FD_SET(0,&rfds);
+  tv.tv_sec = time_out/1000000;
+  tv.tv_usec =time_out%1000000;
+  
+  return select(1,&rfds,NULL,NULL, &tv)>0;
 }
+
 
 
 void error_handling(char * message);
@@ -74,43 +62,84 @@ void GetMyIpAddr(char *ip_buffer)
    close(fd);
 }
 
-/*
-
-
-void * control(void * arg[]){
-	int sock;
-	char msg[24] = arg;
-	char buf[20];
-	char port[4];
-	memcpy(port,msg,4);
+void* thread1(){
 	
-	memcpy(buf,msg[4],20);
-	char message[BUF_SIZE]={0, };
-	struct sockaddr_in serv_adr;
-	 int servLen;
-	sock=socket(PF_INET, SOCK_DGRAM, 0);
-	if(sock==-1)
-		error_handling("UDP socket creation error");
+	int serv_sock;
+    int clint_sock;
+    int len,str_len;
+    struct sockaddr_in serv_addr;
+    struct sockaddr_in clint_addr;
+    socklen_t clnt_addr_size;
+     struct timeval tv;
+     fd_set readfds,tmpfds;//시간읽기
+		int ret; //대기조건
 	
-	memset(&serv_adr, 0, sizeof(serv_adr));
-	serv_adr.sin_family=AF_INET;
-	serv_adr.sin_addr.s_addr=inet_addr(buf);
-	serv_adr.sin_port=htons(atoi(port));
-	while(1){
-		if(_kbhit()){
-		 char command[40];
-		 char msg[100];
-		 fgets(command,1000,stdin);
-		 if(strcmp(command,"@show_clients")==0){
-			  sendto(sock, "@show_clients", 100, 0,(struct sockaddr *)&serv_adr, sizeof(serv_adr));
-			  while(strcmp(msg,"-------")!=0){
-				  recvfrom(sock,msg,10,0,(struct sockaddr *)&serv_adr,&servLen);
-				  fputs(msg,stdout);
-			  }
-		 }
-		}
+		FD_ZERO(&readfds);
+       FD_SET(STDIN_FILENO, &readfds);
+	   tv.tv_sec = TIMEOUT;
+       tv.tv_usec = 0;
+	
+    serv_sock = socket(PF_INET, SOCK_STREAM,0); //1번
+    if(serv_sock == -1)
+        printf("socket error\n");
+    
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    serv_addr.sin_port = htons(9700);
+
+    if(bind(serv_sock,(struct sockaddr*)&serv_addr, sizeof(serv_addr)) == -1){ //2번
+        printf("bind error\n");
 	}
-}*/
+    if(listen(serv_sock,5)==-1) //3번
+        printf("listen error\n");
+    
+    clnt_addr_size = sizeof(clint_addr);
+	while(1){
+    clint_sock = accept(serv_sock,(struct sockaddr*)&clint_addr,&clnt_addr_size); //4번
+    if(clint_sock == -1)
+        printf("accept error\n");
+    else printf("접속됨\n");
+     strcpy(status ,"2");
+    char message[100];
+	
+	printf("[SERV]: Q또는 q를 눌러서 종료\n");
+	while(1){
+		 tmpfds =readfds;
+	   tv.tv_sec = TIMEOUT;
+       tv.tv_usec = 0;
+       // select() 시스템콜을 이용해 입력 대기
+       ret = select(STDIN_FILENO + 1, &tmpfds, NULL, NULL, &tv); 
+	   
+       if (ret == -1) perror("select");
+		
+	    else{
+			if(FD_ISSET(STDIN_FILENO,&readfds)){
+				  char msg[100];
+				 len = read(STDIN_FILENO,msg,100);
+				 if(len=-1){
+					 write(clint_sock, msg, sizeof(msg)-1);
+					  if(strcmp(msg,"q\n")==0 ||strcmp(msg,"Q\n")==0)break;
+					  memset(&msg, 0, sizeof(msg)-1);
+				 }
+		}}
+		 str_len = read(clint_sock,message,sizeof(message)-1); //3번
+			 if(str_len==-1)
+				 printf("read error\n");
+			 printf("client : %s \n", message);
+			  if(strcmp(message,"q\n")==0 ||strcmp(message,"Q\n")==0)break;
+			 memset(&message, 0, sizeof(message));
+			 
+			  
+	}
+	printf("[SERV]:접속을 종료합니다.\n");
+    strcpy(status ,"1");
+	close(clint_sock);
+	}
+  //  close(serv_sock); //6번
+//    
+	
+}
 
 //메인 함수
 int main()
@@ -149,7 +178,6 @@ int main()
   /*------------완료--------------*/
  
   
-	char status[1] ="1";
 	char check[2];
 	char port[4] ={0};
 	char name[300];
@@ -160,12 +188,16 @@ int main()
 		str_len=recvfrom(mrecv_sock, port, BUF_SIZE, 0, NULL, 0);//port는 포트
 		printf("호스트로 부터 IP 주소를 받았습니다. 접속 하시겠습니까? Y or N\n");
 	    fgets(check,2,stdin);//접속 승인 여부
-		
+	pthread_t thread;
+	int new_thread;
+	new_thread = pthread_create(&thread,NULL,thread1,NULL);
+	if(new_thread<0) printf("쓰레드 에러\n");	
 		
 	if(strcmp(check,"y") ==0||strcmp(check, "Y")==0){
 		
 		
 	int sock;
+	int len,len2;
 	char message[BUF_SIZE]={0, };
 	struct sockaddr_in serv_adr;
 	 int servLen;
@@ -178,18 +210,33 @@ int main()
 	serv_adr.sin_addr.s_addr=inet_addr(buf);
 	serv_adr.sin_port=htons(atoi(port));
 		
-	struct timeval tv;//시간 변수
-		fd_set readfds;//시간읽기
+	struct timeval tv,tv2;//시간 변수
+		fd_set readfds,tmpfds;//시간읽기
 		int ret; //대기조건
+		FD_ZERO(&readfds);
+       FD_SET(STDIN_FILENO, &readfds);
+	   tv.tv_sec = TIMEOUT;
+       tv.tv_usec = 0;
+	   
+	   fd_set readfds2,tmpfds2;//시간읽기
+	   int ret2; //대기조건
+	   FD_ZERO(&readfds2);
+       FD_SET(STDIN_FILENO, &readfds2);
+	   tv2.tv_sec = TIMEOUT;
+       tv2.tv_usec = 0;
+	   
 		char ipstr[20]={0};
 		char personal_number[2];
+		char pip[20];
 		char rt[100];
 		GetMyIpAddr(ipstr);
 		 sendto(sock, "@ip",10, 0,(struct sockaddr *)&serv_adr, sizeof(serv_adr));
 		 sendto(sock, ipstr, 20, 0,(struct sockaddr *)&serv_adr, sizeof(serv_adr));
 		 printf("이름을 입력해주시길 바랍니다.(특수문자: @제외)\n");
 		 fgets(name,2,stdin);//접속 승인 여부
-		 fgets(name,1000,stdin);
+		 fgets(name,100,stdin);
+		 
+		(strlen(name) - 1)[name]='\0';
 		 sendto(sock, "@name", 100, 0,(struct sockaddr *)&serv_adr, sizeof(serv_adr));	    
 		 sendto(sock, name, 100, 0,(struct sockaddr *)&serv_adr, sizeof(serv_adr));
 		 printf("접속을 시작합니다\n");
@@ -198,27 +245,19 @@ int main()
 		printf("접속이 완료되었습니다\n");
 		printf("\n*---------------*\n");
         printf("명령어: @show_clients(다른 사용자 상태값 호출) \n");
-        printf("명령어: @connect (상대 IP) (IP를 통해 호스트 연결) \n");
-		printf("\n명령어를 입력하고 싶을 시 아무키나 누르시오:\n");
+        printf("명령어: @connect(IP를 통해 호스트 연결) \n");
+		printf("\n명령어를 입력하고 싶을 시 명령어를 치시고 엔터키를 누르시오.:\n");
 	    printf("*---------------*\n");
-	   //pthread_t thread;
-       
-	   //pthread_create(&thread,NULL,control,strcat(port,buf));
 	   
 	   while(1){
-		   
-	   /* 반복해서 서버에게 자신의 상태값 메세지로 보냄*/
-   	   // 표준 입력에서 입력 대기
-       FD_ZERO(&readfds);
-       FD_SET(STDIN_FILENO, &readfds);
-
-       // select가 5초 동안 기다리도록 timeval 구조체 설정
-       tv.tv_sec = TIMEOUT;
+	   
+	   tmpfds =readfds;
+	   tv.tv_sec = TIMEOUT;
        tv.tv_usec = 0;
        // select() 시스템콜을 이용해 입력 대기
-       ret = select(STDIN_FILENO + 1, &readfds, NULL, NULL, &tv);  
+       ret = select(STDIN_FILENO + 1, &tmpfds, NULL, NULL, &tv); 
        if (ret == -1) perror("select");
-       else if (!ret){
+       else if (ret==0){
 		   memset(&rt, 0, sizeof(rt));
 		   strcpy(rt,personal_number);
 		   strcat(rt,status);
@@ -226,19 +265,85 @@ int main()
 		   sendto(sock, "@heartbeat", 100, 0,(struct sockaddr *)&serv_adr, sizeof(serv_adr));
 		   sendto(sock, rt, 2, 0,(struct sockaddr *)&serv_adr, sizeof(serv_adr));
 	   }
-       /*--------------------------------*/	
-	  
-	  if(_kbhit()){
-		 char command[40];
+        else{
+			if(FD_ISSET(STDIN_FILENO,&readfds)){
+		 char command[100];
 		 char msg[100];
-		 fgets(command,1000,stdin);
-		 if(strcmp(command,"@show_clients")==0){
-			  sendto(sock, "@show_clients", 100, 0,(struct sockaddr *)&serv_adr, sizeof(serv_adr));
-			  while(strcmp(msg,"-------")!=0){
-				  recvfrom(sock,msg,10,0,(struct sockaddr *)&serv_adr,&servLen);
-				  fputs(msg,stdout);
-			  }
+		 
+		 len = read(STDIN_FILENO,command,100);
+		 if(len!=-1){
+		 if(strcmp (command,"@show_clients\n")==0){
+		 sendto(sock, "@show_clients", 100, 0,(struct sockaddr *)&serv_adr, sizeof(serv_adr));
+		 while(strcmp (msg,"-------")!=0){
+		 recvfrom(sock,msg,100,0,(struct sockaddr *)&serv_adr,&servLen);
+		 printf("%s\n",msg);
+		 fflush(stdout);
 		 }
+		 }
+		 
+		 else if(strcmp(command,"@connect\n")==0){
+			 strcpy(status,"2");
+			 printf("IP입력: ");
+			 scanf("%s",pip);
+			 rewind(stdin);
+			 int my_sock;
+			 struct sockaddr_in serv_addr;
+			 int str_len;
+			 my_sock = socket(PF_INET,SOCK_STREAM,0); //1번
+			 if(my_sock == -1) printf("socket error \n");
+			 memset(&serv_addr,0,sizeof(serv_addr));
+			 serv_addr.sin_family = AF_INET;
+			 serv_addr.sin_addr.s_addr=inet_addr(pip);
+			 serv_addr.sin_port=htons(9700);
+			 if(connect(my_sock,(struct sockaddr*)&serv_addr,sizeof(serv_addr))==-1) //2번
+			 printf("connect error\n");
+			 char message[100];
+			  printf("Q또는 q를 눌러서 종료\n");
+			 while(1){
+		     
+			 tmpfds2 =readfds2;
+	         tv2.tv_sec = TIMEOUT;
+             tv2.tv_usec = 0;
+			 ret2 = select(STDIN_FILENO + 1, &tmpfds2, NULL, NULL, &tv2); 
+             
+			 if (ret2 == -1) perror("select");
+             
+			 else if (ret2==0){
+	 	     memset(&rt, 0, sizeof(rt));
+		     strcpy(rt,personal_number);
+		     strcat(rt,status);
+		     sendto(sock, "@heartbeat", 100, 0,(struct sockaddr *)&serv_adr, sizeof(serv_adr));
+		     sendto(sock, rt, 2, 0,(struct sockaddr *)&serv_adr, sizeof(serv_adr));
+			 }
+			 
+			 else{if(FD_ISSET(STDIN_FILENO,&readfds2)){
+				  char msg[100];
+				 len2 = read(STDIN_FILENO,msg,100);
+				 if(len2!=-1){
+					 write(my_sock, msg, sizeof(msg)-1);
+					 if(strcmp(msg,"q\n")==0 ||strcmp(msg,"Q\n")==0)break;
+					  memset(&msg, 0, sizeof(msg)-1);
+				 }
+			}}
+			
+			 str_len = read(my_sock,message,sizeof(message)-1); //3번
+			 if(str_len==-1)
+				 printf("read error2\n");
+			 printf("[상대] : %s \n", message);
+			 if(strcmp(message,"q\n")==0 ||strcmp(message,"Q\n")==0)break;
+			 memset(&message, 0, sizeof(message));
+			 
+	       }
+			
+			 close(my_sock); //4번
+			 strcpy( status ,"1");
+			  printf("접속을 종료합니다.\n");
+ 		 }
+		 
+		 else printf("등록되지 않은 명령어 입니다.\n");
+		 }
+		memset(&command, 0, sizeof(command));	
+		}
 		}
 	   
 	  }
@@ -263,40 +368,3 @@ void error_handling(char * message){
  exit(1);
 }
 
-
-/*void * single_chatting(){
-	 int single_port =2400;
-    int sock,recv_sock;
-	char smessage[BUF_SIZE];
-	char rmessage[BUF_SIZE];
-	int str_len2;
-	
-	struct sockaddr_in serv_adr, from_adr;
-	struct sockaddr_in addr;
-	sock=socket(PF_INET, SOCK_DGRAM, 0);   
-	if(sock==-1)
-		error_handling("socket() error");
-
-	memset(&serv_adr, 0, sizeof(serv_adr));
-	serv_adr.sin_family=AF_INET;
-	serv_adr.sin_addr.s_addr=inet_addr("172.32.32.32");
-	serv_adr.sin_port=htons(single_port);
-    
-	recv_sock=socket(PF_INET, SOCK_DGRAM, 0);
- 	memset(&addr, 0, sizeof(addr));
-	addr.sin_family=AF_INET;
-	addr.sin_addr.s_addr=htonl(INADDR_ANY);	
-	addr.sin_port=htons(single_port);
-    
-           fputs("랜덤 채팅에 입장하십니다.\n", stdout);
-		   while(1){
-		   fputs("q 누를 시 나가집니다.\n", stdout);
-		   fgets(rmessage, sizeof(rmessage), stdin);     
-	       if(!strcmp(rmessage,"q\n") || !strcmp(rmessage,"Q\n")) break;
-	       sendto(sock, smessage, strlen(smessage), 0, (struct sockaddr*)&serv_adr, sizeof(serv_adr));
-           str_len2=recvfrom(recv_sock, rmessage, BUF_SIZE, 0, NULL, 0);	 
-           fputs(rmessage,stdout);	   
-		   }
-}
-
-	   }*/
