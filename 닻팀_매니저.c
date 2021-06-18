@@ -112,9 +112,9 @@ void* thread1(){
 			sendto(sockfd,"전체 접속자 현황", recvLen, 0, (struct sockaddr*)&clntAddr, sizeof(clntAddr));
 			while (n<=cnt){
 				strcat(msg,link);
-				strcat(msg,client[cnt].name);
+				strcat(msg,client[n].name);
 				strcat(msg,link);
-				strcat(msg,client[cnt].ip_address);
+				strcat(msg,client[n].ip_address);
 				strcat(msg,link);
 				if (strcmp(client[n].status, "1")==0)	strcat(msg , " 연결 가능 접속중");
 				else if (strcmp(client[n].status, "0")==0)	strcat(msg , " 미접속중");
